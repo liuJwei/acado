@@ -24,32 +24,28 @@
  */
 
 /**
- *    \file include/acado/code_generation/export_gauss_newton_qpdunes.hpp
- *    \author Milan Vukov
- *    \date 2013
+ *    \file include/acado/code_generation/export_gauss_newton_generic.hpp
+ *    \author Rien Quirynen
+ *    \date 2017
  */
 
-#ifndef ACADO_TOOLKIT_EXPORT_GAUSS_NEWTON_QPDUNES_HPP
-#define ACADO_TOOLKIT_EXPORT_GAUSS_NEWTON_QPDUNES_HPP
+#ifndef ACADO_TOOLKIT_EXPORT_GAUSS_NEWTON_GENERIC_HPP
+#define ACADO_TOOLKIT_EXPORT_GAUSS_NEWTON_GENERIC_HPP
 
 #include <acado/code_generation/export_nlp_solver.hpp>
 
 BEGIN_NAMESPACE_ACADO
 
-class ExportQpDunesInterface;
-
 /**
- *	\brief A class for export of an OCP solver using sparse QP solver qpDUNES
+ *	\brief TBD
  *
  *	\ingroup NumericalAlgorithms
  *
- *	The class ExportGaussNewtonQpDunes allows export of and OCP solver using
- *	the generalized Gauss-Newton method. The underlying QP is solved using the
- *	structured sparse QP solver qpDUNES.
+ *  TBD
  *
  *	\author Milan Vukov
  */
-class ExportGaussNewtonQpDunes : public ExportNLPSolver
+class ExportGaussNewtonGeneric : public ExportNLPSolver
 {
 public:
 
@@ -58,13 +54,13 @@ public:
 	 *	@param[in] _userInteraction		Pointer to corresponding user interface.
 	 *	@param[in] _commonHeaderName	Name of common header file to be included.
 	 */
-	ExportGaussNewtonQpDunes(	UserInteraction* _userInteraction = 0,
-								const std::string& _commonHeaderName = ""
-								);
+	ExportGaussNewtonGeneric(	UserInteraction* _userInteraction = 0,
+							const std::string& _commonHeaderName = ""
+							);
 
 	/** Destructor.
 	*/
-	virtual ~ExportGaussNewtonQpDunes( )
+	virtual ~ExportGaussNewtonGeneric( )
 	{}
 
 	/** Initializes export of an algorithm.
@@ -105,6 +101,7 @@ public:
 	virtual returnValue getCode(	ExportStatementBlock& code
 									);
 
+
 	/** Returns number of variables in underlying QP.
 	 *
 	 *  \return Number of variables in underlying QP
@@ -140,55 +137,36 @@ protected:
 	 */
 	virtual returnValue setupMultiplicationRoutines( );
 
-	/** Exports source code containing the evaluation routines of the algorithm. */
+	/** Exports source code containing the evaluation routines of the algorithm.
+	 *
+	 *	\return SUCCESSFUL_RETURN
+	 */
 	virtual returnValue setupEvaluation( );
 
-	/** Setup of the glue code for the QP solver interaction. */
-	virtual returnValue setupQPInterface( );
-
-protected:
-
+private:
 	/** Current state feedback. */
 	ExportVariable x0;
 
-	/** \name QP interface variables */
-	/** @{ */
-	ExportVariable qpH;
-	ExportVariable qpg;
-	ExportVariable qpgN;
-
-	ExportVariable qpC;
-	ExportVariable qpc;
-	ExportVariable qpLb0, qpUb0;
-	ExportVariable qpLb, qpUb;
-
-	ExportVariable lbValues, ubValues;
-	ExportVariable evLbAValues, evUbAValues;
-
-	ExportVariable qpA;
-	ExportVariable qpLbA, qpUbA;
-
-	ExportVariable qpPrimal, qpLambda, qpMu;
-	/** @} */
-
-	/** \name Objective evaluation. */
+	/** \name Objective evaluation */
 	/** @{ */
 	ExportFunction evaluateObjective;
 
-	ExportFunction setStageH;
 	ExportFunction setStagef;
 
 	ExportFunction setObjQ1Q2;
 	ExportFunction setObjR1R2;
+	ExportFunction setObjS1;
 	ExportFunction setObjQN1QN2;
 
-	bool diagH, diagHN;
 	/** @} */
 
 	/** \name Constraint evaluation */
 	/** @{ */
 	ExportFunction evaluateConstraints;
 	ExportFunction setStagePac;
+	unsigned qpDimHtot;
+	unsigned qpDimH;
+	unsigned qpDimHN;
 	std::vector< unsigned > qpConDim;
 	/** @} */
 
@@ -196,16 +174,7 @@ protected:
 	/** @{ */
 	ExportFunction preparation;
 	ExportFunction feedback;
-	/** @} */
 
-	/** \name qpDUNES interface functions */
-	/** @{ */
-	ExportFunction cleanup;
-	ExportFunction shiftQpData;
-	/** @} */
-
-	/** \name Auxiliary functions */
-	/** @{ */
 	ExportFunction getKKT;
 	/** @} */
 
@@ -214,10 +183,30 @@ protected:
 	ExportFunction acc;
 	/** @} */
 
-	/** qpDUNES interface object. */
-	std::shared_ptr< ExportQpDunesInterface > qpInterface;
+	/** \name QP interface */
+	/** @{ */
+
+	ExportVariable qpQ, qpQf, qpS, qpR;
+
+	ExportVariable qpq, qpqf, qpr;
+	ExportVariable qpx, qpu;
+
+	ExportVariable evLbValues, evUbValues;
+    ExportVariable evLbAValues, evUbAValues;
+	ExportVariable qpLb, qpUb;
+
+	ExportVariable qpLbA, qpUbA;
+
+	ExportVariable sigmaN;
+
+	ExportVariable qpLambda, qpMu, qpSlacks;
+
+	ExportVariable nIt;
+
+//	ExportVariable qpWork;
+	/** @} */
 };
 
 CLOSE_NAMESPACE_ACADO
 
-#endif  // ACADO_TOOLKIT_EXPORT_GAUSS_NEWTON_QPDUNES_HPP
+#endif  // ACADO_TOOLKIT_EXPORT_GAUSS_NEWTON_GENERIC_HPP

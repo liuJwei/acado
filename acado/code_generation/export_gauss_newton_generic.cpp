@@ -24,24 +24,23 @@
  */
 
 /**
- *    \file src/code_generation/export_gauss_newton_hpmpc.cpp
- *    \author Milan Vukov, Niels van Duijkeren
- *    \date 2016
+ *    \file src/code_generation/export_gauss_newton_generic.cpp
+ *    \author Rien Quirynen
+ *    \date 2017
  */
 
-#include <acado/code_generation/export_gauss_newton_hpmpc.hpp>
-#include <acado/code_generation/export_hpmpc_interface.hpp>
+#include <acado/code_generation/export_gauss_newton_generic.hpp>
 
 BEGIN_NAMESPACE_ACADO
 
 using namespace std;
 
-ExportGaussNewtonHpmpc::ExportGaussNewtonHpmpc(	UserInteraction* _userInteraction,
+ExportGaussNewtonGeneric::ExportGaussNewtonGeneric(	UserInteraction* _userInteraction,
 													const std::string& _commonHeaderName
 													) : ExportNLPSolver( _userInteraction,_commonHeaderName )
 {}
 
-returnValue ExportGaussNewtonHpmpc::setup( )
+returnValue ExportGaussNewtonGeneric::setup( )
 {
 	setupInitialization();
 
@@ -57,12 +56,10 @@ returnValue ExportGaussNewtonHpmpc::setup( )
 
 	setupAuxiliaryFunctions();
 
-	setupQPInterface();
-
 	return SUCCESSFUL_RETURN;
 }
 
-returnValue ExportGaussNewtonHpmpc::getDataDeclarations(	ExportStatementBlock& declarations,
+returnValue ExportGaussNewtonGeneric::getDataDeclarations(	ExportStatementBlock& declarations,
 															ExportStruct dataStruct
 															) const
 {
@@ -105,18 +102,18 @@ returnValue ExportGaussNewtonHpmpc::getDataDeclarations(	ExportStatementBlock& d
 
 	declarations.addDeclaration(nIt, dataStruct);
 
-    if (hardcodeConstraintValues == NO) {
-        declarations.addDeclaration(evLbValues, dataStruct);
+	if (hardcodeConstraintValues == NO) {
+	    declarations.addDeclaration(evLbValues, dataStruct);
         declarations.addDeclaration(evUbValues, dataStruct);
 
         declarations.addDeclaration(evLbAValues, dataStruct);
         declarations.addDeclaration(evUbAValues, dataStruct);
-    }
+	}
 
 	return SUCCESSFUL_RETURN;
 }
 
-returnValue ExportGaussNewtonHpmpc::getFunctionDeclarations(	ExportStatementBlock& declarations
+returnValue ExportGaussNewtonGeneric::getFunctionDeclarations(	ExportStatementBlock& declarations
 																) const
 {
 	declarations.addDeclaration( preparation );
@@ -135,33 +132,11 @@ returnValue ExportGaussNewtonHpmpc::getFunctionDeclarations(	ExportStatementBloc
 	return SUCCESSFUL_RETURN;
 }
 
-returnValue ExportGaussNewtonHpmpc::getCode(	ExportStatementBlock& code
+returnValue ExportGaussNewtonGeneric::getCode(	ExportStatementBlock& code
 												)
 {
-	qpInterface->exportCode();
-
 	string moduleName;
 	get(CG_MODULE_NAME, moduleName);
-	// Forward declaration, same as in the template file.
-	code << "#ifdef __cplusplus\n";
-	code << "extern \"C\"{\n";
-	code << "#endif\n";
-	code << "int " << moduleName << "_hpmpc_wrapper(real_t* A, real_t* B, real_t* d, real_t* Q, real_t* Qf, real_t* S, real_t* R, real_t* q, real_t* qf, real_t* r, real_t* lb, real_t* ub, real_t* C, real_t* D, real_t* lbg, real_t* ubg, real_t* CN, real_t* x, real_t* u, real_t* lambda, real_t* mu, int* nIt);\n";
-	code << "#ifdef __cplusplus\n";
-	code << "}\n";
-	code << "#endif\n";
-
-	if (initialStateFixed() == false)
-	{
-		// MHE case, we use a wrapper directly from the NMPC
-		code << "#define NX " << toString( NX ) << "\n";
-		code << "#define NU " << toString( NU ) << "\n";
-		code << "#define NW " << toString( NU ) << "\n";
-		code << "#define NY " << toString( NY ) << "\n";
-		code << "#define NN " << toString( N  ) << "\n";
-
-		code << "#include <hpmpc/c_interface.h>\n\n";
-	}
 
 	code.addLinebreak( 2 );
 	code.addStatement( "/******************************************************************************/\n" );
@@ -217,7 +192,7 @@ returnValue ExportGaussNewtonHpmpc::getCode(	ExportStatementBlock& code
 }
 
 
-unsigned ExportGaussNewtonHpmpc::getNumQPvars( ) const
+unsigned ExportGaussNewtonGeneric::getNumQPvars( ) const
 {
 	if (initialStateFixed() == true)
 		return N * NX + N * NU;
@@ -229,7 +204,7 @@ unsigned ExportGaussNewtonHpmpc::getNumQPvars( ) const
 // PROTECTED FUNCTIONS:
 //
 
-returnValue ExportGaussNewtonHpmpc::setupObjectiveEvaluation( void )
+returnValue ExportGaussNewtonGeneric::setupObjectiveEvaluation( void )
 {
 	evaluateObjective.setup("evaluateObjective");
 
@@ -429,7 +404,11 @@ returnValue ExportGaussNewtonHpmpc::setupObjectiveEvaluation( void )
 	ExportVariable qq, rr;
 	qq.setup("stageq", NX, 1, REAL, ACADO_LOCAL);
 	rr.setup("stager", NU, 1, REAL, ACADO_LOCAL);
-	setStagef.setup("setStagef", qq, rr, index);
+
+
+    ExportVariable SlxCall = objSlx.isGiven() == true ? objSlx : ExportVariable("Slx", NX, 1, REAL, ACADO_LOCAL);
+    ExportVariable SluCall = objSlu.isGiven() == true ? objSlu : ExportVariable("Slu", NU, 1, REAL, ACADO_LOCAL);
+	setStagef.setup("setStagef", qq, rr, SlxCall, SluCall, index);
 
 	if (Q2.isGiven() == false)
 		setStagef.addStatement(
@@ -442,6 +421,7 @@ returnValue ExportGaussNewtonHpmpc::setupObjectiveEvaluation( void )
 				qq == Q2 * Dy.getRows(index * NY, (index + 1) * NY)
 		);
 	}
+    setStagef.addStatement( qq += SlxCall );
 	setStagef.addLinebreak();
 
 	if (R2.isGiven() == false)
@@ -454,6 +434,7 @@ returnValue ExportGaussNewtonHpmpc::setupObjectiveEvaluation( void )
 				rr == R2 * Dy.getRows(index * NY, (index + 1) * NY)
 		);
 	}
+	setStagef.addStatement( rr += SluCall );
 
 	//
 	// Setup necessary QP variables
@@ -508,7 +489,7 @@ returnValue ExportGaussNewtonHpmpc::setupObjectiveEvaluation( void )
 	return SUCCESSFUL_RETURN;
 }
 
-returnValue ExportGaussNewtonHpmpc::setupConstraintsEvaluation( void )
+returnValue ExportGaussNewtonGeneric::setupConstraintsEvaluation( void )
 {
 	////////////////////////////////////////////////////////////////////////////
 	//
@@ -518,8 +499,8 @@ returnValue ExportGaussNewtonHpmpc::setupConstraintsEvaluation( void )
 
 
 
-    int hardcodeConstraintValues;
-    get(CG_HARDCODE_CONSTRAINT_VALUES, hardcodeConstraintValues);
+	int hardcodeConstraintValues;
+	get(CG_HARDCODE_CONSTRAINT_VALUES, hardcodeConstraintValues);
 
 	evaluateConstraints.setup("evaluateConstraints");
 
@@ -684,8 +665,8 @@ returnValue ExportGaussNewtonHpmpc::setupConstraintsEvaluation( void )
 	    evUbAValues.setup("ubAValues", qpDimHtot, 1, REAL, ACADO_VARIABLES);
 	    evUbAValues.setDoc( "Upper affine bounds values." );
 
-	    initialize.addStatement( evLbAValues == lbAValues );
-	    initialize.addStatement( evUbAValues == ubAValues );
+        initialize.addStatement( evLbAValues == lbAValues );
+        initialize.addStatement( evUbAValues == ubAValues );
 	}
 
 	//
@@ -712,19 +693,27 @@ returnValue ExportGaussNewtonHpmpc::setupConstraintsEvaluation( void )
 		// Optionally store derivatives
 		if (pacEvHx.isGiven() == false)
 		{
-			loopPac.addStatement(
-					pacEvHx.makeRowVector().getCols(runPac * dimPacH * NX, (runPac + 1) * dimPacH * NX) ==
-							conValueOut.getCols(derOffset, derOffset + dimPacH * NX )
-			);
+		    for (unsigned j1 = 0; j1 < dimPacH; ++j1) {
+		        for (unsigned j2 = 0; j2 < NX; ++j2) {
+		            loopPac.addStatement(
+		                    pacEvHx.getElement(runPac * dimPacH + j1, j2) ==
+		                            conValueOut.getCol(derOffset + j1*NX+j2)
+		            );
+		        }
+		    }
 
 			derOffset = derOffset + dimPacH * NX;
 		}
 		if (pacEvHu.isGiven() == false )
 		{
-			loopPac.addStatement(
-					pacEvHu.makeRowVector().getCols(runPac * dimPacH * NU, (runPac + 1) * dimPacH * NU) ==
-							conValueOut.getCols(derOffset, derOffset + dimPacH * NU )
-			);
+		    for (unsigned j1 = 0; j1 < dimPacH; ++j1) {
+		        for (unsigned j2 = 0; j2 < NU; ++j2) {
+		            loopPac.addStatement(
+		                    pacEvHu.getElement(runPac * dimPacH + j1, j2) ==
+		                            conValueOut.getCol(derOffset + j1*NU+j2)
+		            );
+		        }
+		    }
 		}
 
 		// Add loop to the function.
@@ -856,7 +845,7 @@ returnValue ExportGaussNewtonHpmpc::setupConstraintsEvaluation( void )
 }
 
 
-returnValue ExportGaussNewtonHpmpc::setupVariables( )
+returnValue ExportGaussNewtonGeneric::setupVariables( )
 {
 	if (initialStateFixed() == true)
 	{
@@ -874,13 +863,23 @@ returnValue ExportGaussNewtonHpmpc::setupVariables( )
 	return SUCCESSFUL_RETURN;
 }
 
-returnValue ExportGaussNewtonHpmpc::setupMultiplicationRoutines( )
+returnValue ExportGaussNewtonGeneric::setupMultiplicationRoutines( )
 {
 	return SUCCESSFUL_RETURN;
 }
 
-returnValue ExportGaussNewtonHpmpc::setupEvaluation( )
+returnValue ExportGaussNewtonGeneric::setupEvaluation( )
 {
+    int gradientUp;
+    get( LIFTED_GRADIENT_UPDATE, gradientUp );
+    bool gradientUpdate = (bool) gradientUp;
+
+    int variableObjS;
+    get(CG_USE_VARIABLE_WEIGHTING_MATRIX, variableObjS);
+    int sensitivityProp;
+    get( DYNAMIC_SENSITIVITY, sensitivityProp );
+    bool adjoint = ((ExportSensitivityType) sensitivityProp == BACKWARD || ((ExportSensitivityType) sensitivityProp == INEXACT && gradientUpdate));
+
 	////////////////////////////////////////////////////////////////////////////
 	//
 	// Setup preparation phase
@@ -905,7 +904,7 @@ returnValue ExportGaussNewtonHpmpc::setupEvaluation( )
 	////////////////////////////////////////////////////////////////////////////
 	ExportVariable stateFeedback("stateFeedback", NX, 1, REAL, ACADO_LOCAL);
 	ExportVariable returnValueFeedbackPhase("retVal", 1, 1, INT, ACADO_LOCAL, true);
-	returnValueFeedbackPhase.setDoc( "Status code of the HPMPC QP solver." );
+	returnValueFeedbackPhase.setDoc( "Status code of the QP solver." );
 	feedback.setup("feedbackStep" );
 	feedback.doc( "Feedback/estimation step of the RTI scheme." );
 	feedback.setReturnValue( returnValueFeedbackPhase );
@@ -924,8 +923,6 @@ returnValue ExportGaussNewtonHpmpc::setupEvaluation( )
 
 	if (initialStateFixed() == false)
 	{
-		// Temporary hack for the workspace
-		feedback << "static real_t qpWork[ HPMPC_RIC_MHE_IF_DP_WORK_SPACE ];\n";
 	}
 	else
 	{
@@ -941,10 +938,20 @@ returnValue ExportGaussNewtonHpmpc::setupEvaluation( )
 	feedback.addStatement( DyN -= yN );
 	feedback.addLinebreak();
 
-	for (unsigned i = 0; i < N; ++i)
-		feedback.addFunctionCall(setStagef, qpq.getAddress(i * NX), qpr.getAddress(i * NU), ExportIndex( i ));
+	for (unsigned i = 0; i < N; ++i) {
+        ExportArgument SlxCall =
+                objSlx.isGiven() == true || (variableObjS == false && !adjoint) ? objSlx : objSlx.getAddress(i * NX, 0);
+        ExportArgument SluCall =
+                objSlu.isGiven() == true || (variableObjS == false && !adjoint) ? objSlu : objSlu.getAddress(i * NU, 0);
+
+		feedback.addFunctionCall(setStagef, qpq.getAddress(i * NX), qpr.getAddress(i * NU), SlxCall, SluCall, ExportIndex( i ));
+	}
 	feedback.addLinebreak();
+    ExportVariable SlxCall =
+                objSlx.isGiven() == true || (variableObjS == false && !adjoint) ? objSlx : objSlx.getRows(N * NX, (N + 1) * NX);
 	feedback.addStatement( qpqf == QN2 * DyN );
+    feedback.addStatement( qpqf += SlxCall );
+
 	feedback.addLinebreak();
 
 	//
@@ -964,97 +971,7 @@ returnValue ExportGaussNewtonHpmpc::setupEvaluation( )
 	get(CG_MODULE_NAME, moduleName);
 
 	// Call the solver
-	if (initialStateFixed() == true) {
-		feedback
-			<< returnValueFeedbackPhase.getFullName() << " = " << moduleName << "_hpmpc_wrapper("
-
-			<< evGx.getAddressString( true ) << ", "
-			<< evGu.getAddressString( true ) << ", "
-			<< d.getAddressString( true ) << ", "
-
-			<< qpQ.getAddressString( true ) << ", "
-			<< qpQf.getAddressString( true ) << ", "
-			<< qpS.getAddressString( true ) << ", "
-			<< qpR.getAddressString( true ) << ", "
-
-			<< qpq.getAddressString( true ) << ", "
-			<< qpqf.getAddressString( true ) << ", "
-			<< qpr.getAddressString( true ) << ", "
-
-			<< qpLb.getAddressString( true ) << ", "
-			<< qpUb.getAddressString( true ) << ", ";
-
-			if (qpDimH) {
-				feedback << pacEvHx.getAddressString( true ) << ", "
-					<< pacEvHu.getAddressString( true ) << ", ";
-			} else {
-				feedback << "0, 0, ";
-			}
-
-			feedback << qpLbA.getAddressString( true ) << ", "
-				<< qpUbA.getAddressString( true ) << ", ";
-
-			if (qpDimHN) {
-				feedback << pocEvHx.getAddressString( true ) << ", ";
-			} else {
-				feedback << "0, ";
-			}
-
-			feedback  << qpx.getAddressString( true ) << ", "
-			<< qpu.getAddressString( true ) << ", "
-
-			<< qpLambda.getAddressString( true ) << ", "
-			<< qpMu.getAddressString( true ) << ", "
-
-			<< nIt.getAddressString( true )
-			<< ");\n";
-	}
-	else
-		feedback
-			<< returnValueFeedbackPhase.getFullName() << " = " << "c_order_riccati_mhe_if('d', 2, "
-			<< toString( NX ) << ", "
-			<< toString( NU ) << ", "
-			<< toString( NY ) << ", "
-			<< toString( N ) << ", "
-
-			<< evGx.getAddressString( true ) << ", "
-			<< evGu.getAddressString( true ) << ", "
-			<< "0, " // C
-			<< d.getAddressString( true ) << ", "
-
-			<< qpR.getAddressString( true ) << ", "
-			<< qpQ.getAddressString( true ) << ", "
-			<< qpQf.getAddressString( true ) << ", "
-//			<< qpS.getAddressString( true ) << ", "
-
-			<< qpr.getAddressString( true ) << ", "
-			<< qpq.getAddressString( true ) << ", "
-			<< qpqf.getAddressString( true ) << ", "
-			<< "0, " // y
-
-			<< DxAC.getAddressString( true ) << ", "
-			<< SAC.getAddressString( true ) << ", "
-
-			<< qpx.getAddressString( true ) << ", "
-			<< sigmaN.getAddressString( true ) << ", "
-			<< qpu.getAddressString( true ) << ", "
-
-			<< qpLambda.getAddressString( true ) << ", "
-
-			<< "qpWork);\n";
-
-	/*
-	int c_order_riccati_mhe_if( char prec, int alg,
-	int nx, int nw, int ny, int N,
-	double *A, double *G, double *C, double *f,
-	double *R, double *Q, double *Qf,
-	double *r, double *q, double *qf, double *y,
-	double *x0, double *L0,
-	double *xe, double *Le, double *w,
-	double *lam, double *work0 );
-	*/
-
-	// XXX Not 100% sure about this one
+	feedback << returnValueFeedbackPhase.getFullName() << " = " << moduleName << "_solve( );\n";
 
 	// Accumulate the solution, i.e. perform full Newton step
 	feedback.addStatement( x.makeColVector() += qpx );
@@ -1116,61 +1033,6 @@ returnValue ExportGaussNewtonHpmpc::setupEvaluation( )
 		getKKT.addStatement( lgLoop );
 		getKKT.addStatement( ugLoop );
 	}
-
-	return SUCCESSFUL_RETURN;
-}
-
-returnValue ExportGaussNewtonHpmpc::setupQPInterface( )
-{
-	//
-	// Configure and export QP interface
-	//
-
-	string folderName;
-	get(CG_EXPORT_FOLDER_NAME, folderName);
-
-	string moduleName;
-	get(CG_MODULE_NAME, moduleName);
-
-	string outFile = folderName + "/" + moduleName + "_hpmpc_interface.c";
-
-	qpInterface = std::shared_ptr< ExportHpmpcInterface >(new ExportHpmpcInterface(outFile, commonHeaderName));
-
-	int maxNumQPiterations;
-	get(MAX_NUM_QP_ITERATIONS, maxNumQPiterations);
-
-	// XXX If not specified, use default value
-	if ( maxNumQPiterations <= 0 )
-		maxNumQPiterations = getNumQPvars();
-
-	int printLevel;
-	get(PRINTLEVEL, printLevel);
-
-	if ( (PrintLevel)printLevel >= HIGH )
-		printLevel = 2;
-	else
-		printLevel = 0;
-
-	int useSinglePrecision;
-	get(USE_SINGLE_PRECISION, useSinglePrecision);
-
-	int hotstartQP;
-	get(HOTSTART_QP, hotstartQP);
-
-	qpInterface->configure(
-			maxNumQPiterations,
-			printLevel,
-			useSinglePrecision,
-			hotstartQP,
-			pacEvHx.getFullName(),
-			pacEvHu.getFullName(),
-			qpLbA.getFullName(),
-			qpUbA.getFullName(),
-			qpDimHtot,
-			qpConDim,
-			N, NX, NU
-
-	);
 
 	return SUCCESSFUL_RETURN;
 }
