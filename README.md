@@ -13,3 +13,5 @@ I have already implemented an example of the model predictive control for an aut
 
 I firstly realized it in MATLAB and solved the finite horizontal optimal control problem by the nonlinear constraint problem solver fmincon with interior point method. It took about 23s seconds to simulate the whole process, almost 5 times over the real time simulated, which was not acceptable. The first simulation step took about 800ms. So I tried to find a high performance solver to overcome the low simulation speed. At last, I did the same experiment in ACADO toolkit installed in ubuntu 16.04 in VMware 12. It also took 700ms-800ms in one simulation step. I felt very depressed. May be the performance would be better in desktop computer.
 
+![](examples/my_examples/fig1.png)
+
